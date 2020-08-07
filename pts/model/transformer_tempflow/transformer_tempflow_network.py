@@ -12,7 +12,6 @@ class TransformerTempFlowTrainingNetwork(nn.Module):
     @validated()
     def __init__(
         self,
-        input_size: int,
         d_model: int,
         num_heads: int,
         act_type: str,
@@ -31,6 +30,7 @@ class TransformerTempFlowTrainingNetwork(nn.Module):
         hidden_size: int,
         n_hidden: int,
         dequantize: bool,
+        input_size: Optional[int] = None,
         cardinality: List[int] = [1],
         embedding_dimension: int = 1,
         scaling: bool = True,
@@ -47,8 +47,13 @@ class TransformerTempFlowTrainingNetwork(nn.Module):
         lags_seq.sort()
         self.lags_seq = lags_seq
 
-        self.encoder_input = nn.Linear(input_size, d_model)
-        self.decoder_input = nn.Linear(input_size, d_model)
+        self.d_model = d_model
+        self.input_size = input_size
+        self._encoder_input = None
+        self._decoder_input = None
+        if input_size is not None:
+            self.encoder_input(input_size)
+            self.decoder_input(input_size)
 
         # [B, T, d_model] where d_model / num_heads is int
         self.transformer = nn.Transformer(
@@ -92,6 +97,18 @@ class TransformerTempFlowTrainingNetwork(nn.Module):
             "tgt_mask",
             self.transformer.generate_square_subsequent_mask(prediction_length),
         )
+
+    def encoder_input(self, input_size):
+        self.input_size = input_size
+        if self._encoder_input is None:
+            self._encoder_input = nn.Linear(input_size, self.d_model)
+        return self._encoder_input
+
+    def decoder_input(self, input_size):
+        self.input_size = input_size
+        if self._decoder_input is None:
+            self._decoder_input = nn.Linear(input_size, self.d_model)
+        return self._decoder_input
 
     @staticmethod
     def get_lagged_subsequences(
@@ -349,11 +366,11 @@ class TransformerTempFlowTrainingNetwork(nn.Module):
         dec_inputs = inputs[:, self.context_length :, ...]
 
         enc_out = self.transformer.encoder(
-            self.encoder_input(enc_inputs).permute(1, 0, 2)
+            self.encoder_input(enc_inputs.shape[-1])(enc_inputs).permute(1, 0, 2)
         )
 
         dec_output = self.transformer.decoder(
-            self.decoder_input(dec_inputs).permute(1, 0, 2),
+            self.decoder_input(dec_inputs.shape[-1])(dec_inputs).permute(1, 0, 2),
             enc_out,
             tgt_mask=self.tgt_mask,
         )
@@ -497,7 +514,7 @@ class TransformerTempFlowPredictionNetwork(TransformerTempFlowTrainingNetwork):
             )
 
             dec_output = self.transformer.decoder(
-                self.decoder_input(dec_input).permute(1, 0, 2), repeated_enc_out
+                self.decoder_input(dec_input.shape[-1])(dec_input).permute(1, 0, 2), repeated_enc_out
             )
 
             distr_args = self.distr_args(decoder_output=dec_output.permute(1, 0, 2))
@@ -574,7 +591,7 @@ class TransformerTempFlowPredictionNetwork(TransformerTempFlowTrainingNetwork):
             target_dimension_indicator=target_dimension_indicator,
         )
 
-        enc_out = self.transformer.encoder(self.encoder_input(inputs).permute(1, 0, 2))
+        enc_out = self.transformer.encoder(self.encoder_input(inputs.shape[-1])(inputs).permute(1, 0, 2))
 
         return self.sampling_decoder(
             past_target_cdf=past_target_cdf,

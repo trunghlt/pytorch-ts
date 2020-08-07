@@ -30,7 +30,6 @@ from .transformer_tempflow_network import TransformerTempFlowTrainingNetwork, Tr
 class TransformerTempFlowEstimator(PTSEstimator):
     def __init__(
         self,
-        input_size: int,
         freq: str,
         prediction_length: int,
         target_dim: int,
@@ -66,7 +65,6 @@ class TransformerTempFlowEstimator(PTSEstimator):
             context_length if context_length is not None else prediction_length
         )
 
-        self.input_size = input_size
         self.prediction_length = prediction_length
         self.target_dim = target_dim
 
@@ -158,7 +156,6 @@ class TransformerTempFlowEstimator(PTSEstimator):
 
     def create_training_network(self, device: torch.device) -> TransformerTempFlowTrainingNetwork:
         return TransformerTempFlowTrainingNetwork(
-            input_size=self.input_size,
             target_dim=self.target_dim,
             num_heads=self.num_heads,
             act_type=self.act_type,
@@ -189,7 +186,6 @@ class TransformerTempFlowEstimator(PTSEstimator):
         device: torch.device,
     ) -> PTSPredictor:
         prediction_network = TransformerTempFlowPredictionNetwork(
-            input_size=self.input_size,
             target_dim=self.target_dim,
             num_heads=self.num_heads,
             act_type=self.act_type,
@@ -212,6 +208,7 @@ class TransformerTempFlowEstimator(PTSEstimator):
             conditioning_length=self.conditioning_length,
             dequantize=self.dequantize,
             num_parallel_samples=self.num_parallel_samples,
+            input_size=trained_network.input_size,
         ).to(device)
 
         copy_parameters(trained_network, prediction_network)
